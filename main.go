@@ -40,6 +40,11 @@ func main() {
 		log.Printf("HTML export disabled by flag.")
 	}
 
+    // Copy any local includes to docs on startup (best-effort)
+    if err := copyIncludesToDocs("_includes", "docs"); err != nil {
+        log.Printf("copy includes failed: %v", err)
+    }
+
 	log.Printf("Serving embedded UI on http://%s\n", *addr)
 	if err := http.ListenAndServe(*addr, nil); err != nil {
 		log.Fatal(err)
@@ -132,11 +137,89 @@ func exportMarkdownFile(cmark, src string) error {
     base := filepath.Base(src)
     outPath := filepath.Join("docs", strings.TrimSuffix(base, filepath.Ext(base))+".html")
     cmd := exec.Command(cmark, src)
-    out, err := cmd.Output()
+    body, err := cmd.Output()
     if err != nil {
         return err
     }
-    return os.WriteFile(outPath, out, 0644)
+    // Optional header/footer wrapping from ./_includes
+    var header, footer []byte
+    if b, err := os.ReadFile(filepath.Join("_includes", "header.html")); err == nil {
+        header = b
+    }
+    if b, err := os.ReadFile(filepath.Join("_includes", "footer.html")); err == nil {
+        footer = b
+    }
+    // Compose output
+    composed := make([]byte, 0, len(header)+len(body)+len(footer))
+    composed = append(composed, header...)
+    composed = append(composed, body...)
+    composed = append(composed, footer...)
+    return os.WriteFile(outPath, composed, 0644)
+}
+
+// copyIncludesToDocs copies all files and folders from srcDir (e.g. "_includes")
+// into dstDir (e.g. "docs"). If srcDir doesn't exist, it does nothing.
+func copyIncludesToDocs(srcDir, dstDir string) error {
+    info, err := os.Stat(srcDir)
+    if err != nil {
+        if os.IsNotExist(err) {
+            return nil
+        }
+        return err
+    }
+    if !info.IsDir() {
+        return nil
+    }
+    if err := os.MkdirAll(dstDir, 0755); err != nil {
+        return err
+    }
+    return copyTree(srcDir, dstDir)
+}
+
+func copyTree(src, dst string) error {
+    entries, err := os.ReadDir(src)
+    if err != nil {
+        return err
+    }
+    for _, e := range entries {
+        sPath := filepath.Join(src, e.Name())
+        dPath := filepath.Join(dst, e.Name())
+        if e.IsDir() {
+            if err := os.MkdirAll(dPath, 0755); err != nil {
+                return err
+            }
+            if err := copyTree(sPath, dPath); err != nil {
+                return err
+            }
+            continue
+        }
+        // Copy file
+        if err := copyFile(sPath, dPath); err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+func copyFile(src, dst string) error {
+    in, err := os.Open(src)
+    if err != nil {
+        return err
+    }
+    defer in.Close()
+    out, err := os.Create(dst)
+    if err != nil {
+        return err
+    }
+    defer func() { _ = out.Close() }()
+    if _, err := io.Copy(out, in); err != nil {
+        return err
+    }
+    // Best-effort to copy file mode
+    if fi, err := os.Stat(src); err == nil {
+        _ = os.Chmod(dst, fi.Mode())
+    }
+    return nil
 }
 
 // handleNew creates a new file named "untitled.new" in the current working

@@ -27,6 +27,37 @@ You can disable automatic export with the `-export=false` flag:
 minimark -export=false
 ```
 
+#### Optional header/footer and static includes
+
+- Place `header.html` and/or `footer.html` in a local `_includes/` directory. On export, Minimark wraps the converted HTML as:
+  - `header.html` (if present) + converted Markdown + `footer.html` (if present)
+- On startup, all files inside your local `_includes/` are copied into `./docs` (recursively). Use this to ship CSS/JS/images referenced by your header/footer.
+- If `_includes/` is missing, wrapping is skipped and no files are copied.
+
+#### Installing cmark-gfm
+
+```sh
+# macOS (Homebrew)
+brew install cmark-gfm
+
+# Debian/Ubuntu (if available in your release)
+sudo apt update && sudo apt install -y cmark-gfm
+
+# Debian/Ubuntu (build from source if package not found)
+sudo apt update && sudo apt install -y build-essential cmake git
+git clone https://github.com/github/cmark-gfm.git
+cd cmark-gfm
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMARK_TESTS=OFF
+cmake --build build -j
+sudo cmake --install build
+
+# Windows options
+# 1) Recommended: Use WSL and follow Debian/Ubuntu steps above
+# 2) Or build from source with CMake + Visual Studio (Developer Prompt):
+#    - Install CMake (https://cmake.org/download/) and VS Build Tools
+#    - Then run the same cmake build steps in a native shell
+```
+
 Optional flag:
 
 ```sh
