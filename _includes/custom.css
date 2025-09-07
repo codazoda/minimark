@@ -1,0 +1,20 @@
+:root {
+    border-top: none;
+}
+
+html, body {
+    height: calc(100% - 20px);
+}
+
+body {
+    max-width: none;
+}
+
+#typebox {
+    width: 100%;
+    height: calc(100% - 20px);
+    /* prevent the user from resizing the element */
+    resize: none;
+    /* keep scrolling behavior if content overflows */
+    overflow: auto;
+}
