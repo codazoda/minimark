@@ -17,6 +17,16 @@ Then open `http://localhost:8080/`.
 - Autosaves the file after 500ms of inactivity while typing.
 - Serves a minimal UI (HTML/CSS/JS) embedded in the binary—no extra files are written in your working directory.
 
+### HTML Export (cmark-gfm)
+
+If `cmark-gfm` is installed and on your `PATH`, Minimark will automatically export the current file you are editing to an HTML file under `./docs` after each save.
+
+You can disable automatic export with the `-export=false` flag:
+
+```sh
+minimark -export=false
+```
+
 Optional flag:
 
 ```sh

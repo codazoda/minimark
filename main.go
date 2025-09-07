@@ -8,6 +8,7 @@ import (
     "log"
     "net/http"
     "os"
+    "os/exec"
     "path/filepath"
     "strings"
     "time"
@@ -18,6 +19,7 @@ var embeddedIncludes embed.FS
 
 func main() {
     addr := flag.String("addr", "localhost:8080", "address to listen on, e.g. localhost:8080 or 127.0.0.1:8080")
+    exportHTML := flag.Bool("export", true, "export HTML to ./docs using cmark-gfm on save")
     flag.Parse()
 
     http.Handle("/", rootHandler())
@@ -25,6 +27,18 @@ func main() {
     http.HandleFunc("/open", openLastMarkdown)
     http.HandleFunc("/index", handleLoadIndex)
     http.HandleFunc("/save", handleSave)
+
+	// Discover cmark-gfm availability
+	if *exportHTML {
+		if path, err := exec.LookPath("cmark-gfm"); err == nil {
+			cmarkPath = path
+			log.Printf("cmark-gfm found at %s; will export HTML on save.", path)
+		} else {
+			log.Printf("cmark-gfm not found; docs will not be exported. Install cmark-gfm to enable exports.")
+		}
+	} else {
+		log.Printf("HTML export disabled by flag.")
+	}
 
 	log.Printf("Serving embedded UI on http://%s\n", *addr)
 	if err := http.ListenAndServe(*addr, nil); err != nil {
@@ -69,10 +83,10 @@ func handleLoadIndex(w http.ResponseWriter, r *http.Request) {
 // then `X-Filename` header, and defaults to "index.md". Only basenames are
 // allowed to avoid path traversal.
 func handleSave(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
 	name := r.URL.Query().Get("file")
 	if name == "" {
 		name = r.Header.Get("X-Filename")
@@ -91,11 +105,38 @@ func handleSave(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := os.WriteFile(name, data, 0644); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+    if err := os.WriteFile(name, data, 0644); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    // Trigger export after save if available/enabled for this file only
+    if cmarkPath != "" {
+        if err := exportMarkdownFile(cmarkPath, name); err != nil {
+            log.Printf("export error for %s: %v", name, err)
+        }
+    }
+    w.WriteHeader(http.StatusNoContent)
+}
+
+var cmarkPath string // discovered at startup if available
+
+// exportMarkdownFile converts a single Markdown file to HTML in ./docs using
+// cmark-gfm. The output filename matches the input basename with .html ext.
+func exportMarkdownFile(cmark, src string) error {
+    if !strings.EqualFold(filepath.Ext(src), ".md") {
+        return nil
+    }
+    if err := os.MkdirAll("docs", 0755); err != nil {
+        return err
+    }
+    base := filepath.Base(src)
+    outPath := filepath.Join("docs", strings.TrimSuffix(base, filepath.Ext(base))+".html")
+    cmd := exec.Command(cmark, src)
+    out, err := cmd.Output()
+    if err != nil {
+        return err
+    }
+    return os.WriteFile(outPath, out, 0644)
 }
 
 // handleNew creates a new file named "untitled.new" in the current working
