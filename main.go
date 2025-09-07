@@ -1,42 +1,46 @@
 package main
 
 import (
-	"flag"
-	"io"
-	"log"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
+    "embed"
+    "flag"
+    "io"
+    "io/fs"
+    "log"
+    "net/http"
+    "os"
+    "path/filepath"
+    "strings"
+    "time"
 )
 
+//go:embed _includes/*
+var embeddedIncludes embed.FS
+
 func main() {
-	const baseDir = "_includes"
-	addr := flag.String("addr", "localhost:8080", "address to listen on, e.g. localhost:8080 or 127.0.0.1:8080")
-	flag.Parse()
+    addr := flag.String("addr", "localhost:8080", "address to listen on, e.g. localhost:8080 or 127.0.0.1:8080")
+    flag.Parse()
 
-	http.Handle("/", rootHandler(baseDir))
-	http.HandleFunc("/new", handleNew)
-	http.HandleFunc("/open", openLastMarkdown)
-	http.HandleFunc("/index", handleLoadIndex)
-	http.HandleFunc("/save", handleSave)
+    http.Handle("/", rootHandler())
+    http.HandleFunc("/new", handleNew)
+    http.HandleFunc("/open", openLastMarkdown)
+    http.HandleFunc("/index", handleLoadIndex)
+    http.HandleFunc("/save", handleSave)
 
-	log.Printf("Serving %s on http://%s\n", baseDir, *addr)
+	log.Printf("Serving embedded UI on http://%s\n", *addr)
 	if err := http.ListenAndServe(*addr, nil); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func rootHandler(baseDir string) http.Handler {
-	fs := http.FileServer(http.Dir(baseDir))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			http.ServeFile(w, r, filepath.Join(baseDir, "index.html"))
-			return
-		}
-		fs.ServeHTTP(w, r)
-	})
+func rootHandler() http.Handler {
+    sub, err := fs.Sub(embeddedIncludes, "_includes")
+    if err != nil {
+        // If embedding misconfigured, fail loudly at runtime
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            http.Error(w, "embedded assets not found", http.StatusInternalServerError)
+        })
+    }
+    return http.FileServer(http.FS(sub))
 }
 
 // handleLoadIndex streams the contents of ./index.md as text/plain.
