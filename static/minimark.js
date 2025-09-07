@@ -37,7 +37,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(async () => {
             try {
-                await fetch(`/save?file=${encodeURIComponent(currentFilename)}`, {
+                const res = await fetch(`/save?file=${encodeURIComponent(currentFilename)}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'text/plain; charset=utf-8',
@@ -45,6 +45,12 @@ window.addEventListener('DOMContentLoaded', async () => {
                     },
                     body: textarea.value
                 });
+                const newName = res.headers.get('X-Filename');
+                if (newName && newName !== currentFilename) {
+                    currentFilename = newName;
+                    if (filenameEl) filenameEl.textContent = newName;
+                    document.title = `Minimark - ${newName}`;
+                }
             } catch (err) {
                 console.error('Autosave failed:', err);
             }

@@ -2,6 +2,7 @@ package main
 
 import (
     "embed"
+    "fmt"
     "flag"
     "io"
     "io/fs"
@@ -10,6 +11,7 @@ import (
     "os"
     "os/exec"
     "path/filepath"
+    "regexp"
     "strings"
     "time"
 )
@@ -104,44 +106,67 @@ func handleSave(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid filename", http.StatusBadRequest)
 		return
 	}
-	// Read full body.
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-    if err := os.WriteFile(name, data, 0644); err != nil {
+    // Read full body.
+    data, err := io.ReadAll(r.Body)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+    // Decide final target filename based on first H1, unless reserved
+    targetName := decideFilenameFromContent(name, data)
+    // If renaming, avoid overwriting any existing file by picking a unique name
+    if targetName != name {
+        targetName = uniqueAvailableName(targetName)
+    }
+    if err := os.WriteFile(targetName, data, 0644); err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
+    // If we renamed, remove the previous file and its exported HTML (best-effort).
+    if targetName != name {
+        _ = os.Remove(name)
+        // Compute old HTML out name using current mapping rules
+        oldOutName := htmlOutNameFor(filepath.Base(name))
+        _ = os.Remove(filepath.Join("docs", oldOutName))
+    }
     // Trigger export after save if available/enabled for this file only
     if cmarkPath != "" {
-        if err := exportMarkdownFile(cmarkPath, name); err != nil {
-            log.Printf("export error for %s: %v", name, err)
+        outName := htmlOutNameFor(filepath.Base(targetName))
+        outPath := filepath.Join("docs", outName)
+        if err := exportMarkdownTo(cmarkPath, targetName, outPath); err != nil {
+            log.Printf("export error for %s: %v", targetName, err)
         }
     }
+    // Return the filename used so the client can update state
+    w.Header().Set("X-Filename", filepath.Base(targetName))
     w.WriteHeader(http.StatusNoContent)
 }
 
 var cmarkPath string // discovered at startup if available
 
-// exportMarkdownFile converts a single Markdown file to HTML in ./docs using
-// cmark-gfm. The output filename matches the input basename with .html ext.
-func exportMarkdownFile(cmark, src string) error {
+// htmlOutNameFor computes the output HTML filename for a given markdown basename.
+// Special-case: readme.md -> index.html if no index.md exists.
+func htmlOutNameFor(mdBase string) string {
+    if strings.EqualFold(mdBase, "readme.md") && !fileExistsLower("index.md") {
+        return "index.html"
+    }
+    return strings.TrimSuffix(mdBase, filepath.Ext(mdBase)) + ".html"
+}
+
+// exportMarkdownTo converts a single Markdown file to HTML using cmark-gfm and
+// writes it to outPath, wrapping with optional _includes/header/footer.
+func exportMarkdownTo(cmark, src, outPath string) error {
     if !strings.EqualFold(filepath.Ext(src), ".md") {
         return nil
     }
-    if err := os.MkdirAll("docs", 0755); err != nil {
+    if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
         return err
     }
-    base := filepath.Base(src)
-    outPath := filepath.Join("docs", strings.TrimSuffix(base, filepath.Ext(base))+".html")
     cmd := exec.Command(cmark, src)
     body, err := cmd.Output()
     if err != nil {
         return err
     }
-    // Optional header/footer wrapping from ./_includes
     var header, footer []byte
     if b, err := os.ReadFile(filepath.Join("_includes", "header.html")); err == nil {
         header = b
@@ -149,12 +174,106 @@ func exportMarkdownFile(cmark, src string) error {
     if b, err := os.ReadFile(filepath.Join("_includes", "footer.html")); err == nil {
         footer = b
     }
-    // Compose output
     composed := make([]byte, 0, len(header)+len(body)+len(footer))
     composed = append(composed, header...)
     composed = append(composed, body...)
     composed = append(composed, footer...)
     return os.WriteFile(outPath, composed, 0644)
+}
+
+// fileExistsLower checks for a file in the current directory by lowercased name.
+func fileExistsLower(name string) bool {
+    want := strings.ToLower(name)
+    entries, err := os.ReadDir(".")
+    if err != nil {
+        return false
+    }
+    for _, e := range entries {
+        if e.IsDir() { continue }
+        if strings.ToLower(e.Name()) == want {
+            return true
+        }
+    }
+    return false
+}
+
+var atxH1Re = regexp.MustCompile(`(?m)^\s*#\s+(.+?)\s*$`)
+var setextH1Re = regexp.MustCompile(`(?m)^\s*([^\r\n]+?)\s*\r?\n[ \t]*=+[ \t]*$`)
+
+func extractTitle(content []byte) string {
+    s := string(content)
+    atxIdx := atxH1Re.FindStringSubmatchIndex(s)
+    setextIdx := setextH1Re.FindStringSubmatchIndex(s)
+    if atxIdx == nil && setextIdx == nil {
+        return ""
+    }
+    if setextIdx == nil || (atxIdx != nil && atxIdx[0] < setextIdx[0]) {
+        // Use ATX match
+        return strings.TrimSpace(s[atxIdx[2]:atxIdx[3]])
+    }
+    // Use Setext match
+    return strings.TrimSpace(s[setextIdx[2]:setextIdx[3]])
+}
+
+// decideFilenameFromContent returns a filename to write to, possibly renamed
+// from the first H1 in the content. It never renames index.md or readme.md.
+func decideFilenameFromContent(current string, content []byte) string {
+    base := filepath.Base(current)
+    lower := strings.ToLower(base)
+    if lower == "index.md" || lower == "readme.md" {
+        return base
+    }
+    // Look for first ATX H1: lines starting with '# '
+    title := extractTitle(content)
+    if title == "" {
+        return base
+    }
+    slug := slugify(title)
+    if slug == "" {
+        return base
+    }
+    candidate := slug + ".md"
+    if candidate == base {
+        return base
+    }
+    return candidate
+}
+
+func slugify(s string) string {
+    s = strings.ToLower(s)
+    var b strings.Builder
+    prevHyphen := false
+    for _, r := range s {
+        if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+            b.WriteRune(r)
+            prevHyphen = false
+        } else {
+            if !prevHyphen {
+                b.WriteRune('-')
+                prevHyphen = true
+            }
+        }
+    }
+    out := b.String()
+    out = strings.Trim(out, "-")
+    return out
+}
+
+// uniqueAvailableName returns a filename that does not currently exist by
+// appending -1, -2, ... to the basename if needed. Only operates on basenames.
+func uniqueAvailableName(preferred string) string {
+    preferred = filepath.Base(preferred)
+    ext := filepath.Ext(preferred)
+    base := strings.TrimSuffix(preferred, ext)
+    if _, err := os.Stat(preferred); os.IsNotExist(err) {
+        return preferred
+    }
+    for i := 1; ; i++ {
+        candidate := fmt.Sprintf("%s-%d%s", base, i, ext)
+        if _, err := os.Stat(candidate); os.IsNotExist(err) {
+            return candidate
+        }
+    }
 }
 
 // copyIncludesToDocs copies all files and folders from srcDir (e.g. "_includes")

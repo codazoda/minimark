@@ -39,6 +39,7 @@
 </li>
 <li>On startup, all files inside your local <code>_includes/</code> are copied into <code>./docs</code> (recursively). Use this to ship CSS/JS/images referenced by your header/footer.</li>
 <li>If <code>_includes/</code> is missing, wrapping is skipped and no files are copied.</li>
+<li>Special case: exporting <code>readme.md</code> writes <code>docs/index.html</code> if there is no <code>index.md</code> in the directory.</li>
 </ul>
 <h4>Installing cmark-gfm</h4>
 <pre><code class="language-sh"># macOS (Homebrew)
