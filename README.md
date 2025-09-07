@@ -56,5 +56,5 @@ Ensure `GOBIN` (or `GOPATH/bin`) is on your `PATH` to run the installed binary f
 
 ## Notes
 
-- All UI assets in `_includes/` are embedded into the binary via `go:embed`.
+- All UI assets in `static/` are embedded into the binary via `go:embed`.
 - Only Markdown files live in your working directory for a clean setup.

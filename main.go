@@ -14,7 +14,7 @@ import (
     "time"
 )
 
-//go:embed _includes/*
+//go:embed static/*
 var embeddedIncludes embed.FS
 
 func main() {
@@ -47,7 +47,7 @@ func main() {
 }
 
 func rootHandler() http.Handler {
-    sub, err := fs.Sub(embeddedIncludes, "_includes")
+    sub, err := fs.Sub(embeddedIncludes, "static")
     if err != nil {
         // If embedding misconfigured, fail loudly at runtime
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
