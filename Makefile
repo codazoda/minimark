@@ -4,7 +4,7 @@ PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 win
 
 .PHONY: all build build-local install run clean test cover build-all dist-clean
 
-all: build
+all: build install
 
 install:
 	go install .
