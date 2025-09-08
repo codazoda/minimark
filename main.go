@@ -2,6 +2,8 @@ package main
 
 import (
     "embed"
+    "crypto/rand"
+    "encoding/hex"
     "fmt"
     "flag"
     "io"
@@ -13,6 +15,7 @@ import (
     "path/filepath"
     "regexp"
     "strings"
+    "sync"
     "time"
 )
 
@@ -29,6 +32,8 @@ func main() {
     http.HandleFunc("/open", openLastMarkdown)
     http.HandleFunc("/index", handleLoadIndex)
     http.HandleFunc("/save", handleSave)
+    http.HandleFunc("/lock", handleLock)
+    http.HandleFunc("/unlock", handleUnlock)
 
 	// Discover cmark-gfm availability
 	if *exportHTML {
@@ -66,23 +71,22 @@ func rootHandler() http.Handler {
 
 // handleLoadIndex streams the contents of ./index.md as text/plain.
 func handleLoadIndex(w http.ResponseWriter, r *http.Request) {
-	const indexPath = "index.md"
-	f, err := os.Open(indexPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			http.Error(w, "index.md not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer f.Close()
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-Filename", filepath.Base(indexPath))
-	if _, err := io.Copy(w, f); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+    const indexPath = "index.md"
+    b, err := os.ReadFile(indexPath)
+    if err != nil {
+        if os.IsNotExist(err) {
+            http.Error(w, "index.md not found", http.StatusNotFound)
+            return
+        }
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+    w.Header().Set("X-Filename", filepath.Base(indexPath))
+    if _, err := w.Write(b); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
 }
 
 // handleSave writes the request body to the given file in the current
@@ -112,6 +116,12 @@ func handleSave(w http.ResponseWriter, r *http.Request) {
         http.Error(w, err.Error(), http.StatusBadRequest)
         return
     }
+    // Require a valid lock token
+    token := r.Header.Get("X-Lock")
+    if !hasValidLock(name, token) {
+        http.Error(w, "file is locked by another editor", http.StatusLocked)
+        return
+    }
     // Decide final target filename based on first H1, unless reserved
     targetName := decideFilenameFromContent(name, data)
     // If renaming, avoid overwriting any existing file by picking a unique name
@@ -137,7 +147,7 @@ func handleSave(w http.ResponseWriter, r *http.Request) {
             log.Printf("export error for %s: %v", targetName, err)
         }
     }
-    // Return the filename used so the client can update state
+    // Return the filename so the client can update state
     w.Header().Set("X-Filename", filepath.Base(targetName))
     w.WriteHeader(http.StatusNoContent)
 }
@@ -340,6 +350,113 @@ func copyFile(src, dst string) error {
     }
     return nil
 }
+// --------- Simple per-file locks with 1s TTL ---------
+
+type lockInfo struct {
+    token   string
+    expires time.Time
+}
+
+var (
+    locks   = make(map[string]lockInfo)
+    locksMu sync.Mutex
+)
+
+const lockTTL = time.Second
+
+func handleLock(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+    name := filepath.Base(r.URL.Query().Get("file"))
+    if name == "" {
+        http.Error(w, "missing file", http.StatusBadRequest)
+        return
+    }
+    reqToken := r.Header.Get("X-Lock")
+    now := time.Now()
+
+    locksMu.Lock()
+    defer locksMu.Unlock()
+
+    li, exists := locks[name]
+    if exists && now.Before(li.expires) {
+        if reqToken != "" && reqToken == li.token {
+            // Refresh lock
+            li.expires = now.Add(lockTTL)
+            locks[name] = li
+            w.Header().Set("X-Lock", li.token)
+            w.WriteHeader(http.StatusOK)
+            return
+        }
+        // Locked by someone else
+        http.Error(w, "locked", http.StatusLocked)
+        return
+    }
+    // Acquire new lock
+    tok := reqToken
+    if tok == "" {
+        tok = newToken()
+    }
+    locks[name] = lockInfo{token: tok, expires: now.Add(lockTTL)}
+    w.Header().Set("X-Lock", tok)
+    w.WriteHeader(http.StatusCreated)
+}
+
+func handleUnlock(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+    name := filepath.Base(r.URL.Query().Get("file"))
+    tok := r.Header.Get("X-Lock")
+    locksMu.Lock()
+    defer locksMu.Unlock()
+    if li, ok := locks[name]; ok && li.token == tok {
+        delete(locks, name)
+        w.WriteHeader(http.StatusNoContent)
+        return
+    }
+    http.Error(w, "not lock owner", http.StatusLocked)
+}
+
+func hasValidLock(name, tok string) bool {
+    name = filepath.Base(name)
+    now := time.Now()
+    locksMu.Lock()
+    defer locksMu.Unlock()
+    li, ok := locks[name]
+    if !ok {
+        return false
+    }
+    if now.After(li.expires) {
+        delete(locks, name)
+        return false
+    }
+    return li.token == tok
+}
+
+func transferLock(oldName, newName, tok string) {
+    oldName = filepath.Base(oldName)
+    newName = filepath.Base(newName)
+    now := time.Now()
+    locksMu.Lock()
+    defer locksMu.Unlock()
+    li, ok := locks[oldName]
+    if !ok || li.token != tok || now.After(li.expires) {
+        return
+    }
+    delete(locks, oldName)
+    li.expires = now.Add(lockTTL)
+    locks[newName] = li
+}
+
+func newToken() string {
+    var b [16]byte
+    _, _ = rand.Read(b[:])
+    return hex.EncodeToString(b[:])
+}
 
 // handleNew creates a new file named "untitled.new" in the current working
 // directory if it does not already exist. It responds with the file path.
@@ -377,19 +494,18 @@ func openLastMarkdown(w http.ResponseWriter, r *http.Request) {
 		_ = created // not used further; just informational
 	}
 
-	f, err := os.Open(file)
+	b, err := os.ReadFile(file)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer f.Close()
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-Filename", filepath.Base(file))
-	if _, err := io.Copy(w, f); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+    w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+    w.Header().Set("X-Filename", filepath.Base(file))
+    if _, err := w.Write(b); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
 }
 
 // createFileIfNotExists ensures a file with the given name exists in the
