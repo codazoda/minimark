@@ -21,6 +21,29 @@ Then open `http://localhost:8080/`.
 - Autosaves the file after 500ms of inactivity while typing.
 - Serves a minimal UI (HTML/CSS/JS) embedded in the binary—no extra files are written in your working directory.
 
+### File Naming and Renaming
+
+Minimark tries to keep filenames readable and in sync with your document title:
+
+- New files start as `untitled.md` (or `untitled-1.md`, `untitled-2.md`, … if a file already exists).
+- On save, if the file is not `index.md` or `readme.md`, the first level‑1 heading (H1) determines the filename.
+  - Supported H1 formats: `# Title` (ATX) and the Setext style:
+    ```
+    Title
+    =====
+    ```
+  - The title is slugified (lowercase, spaces/punctuation → dashes) to become the filename, e.g. “My Note” → `my-note.md`.
+- If the slugged name differs from the current file, Minimark renames the file on save.
+  - Existing files are never overwritten; a unique suffix is added (`-1`, `-2`, …) if needed.
+  - The old Markdown file is deleted after a successful rename (and its previously exported HTML is also removed).
+- Special cases that never auto‑rename: `index.md` and `readme.md`.
+
+HTML export filenames under `docs/` follow these rules:
+
+- For most files, `name.md` → `docs/name.html`.
+- Special case: `readme.md` exports to `docs/index.html` if there is no `index.md` in the directory.
+- Optional wrapping with `_includes/header.html` and `_includes/footer.html` if present.
+
 
 ### HTML Export (cmark-gfm)
 
