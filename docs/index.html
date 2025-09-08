@@ -15,7 +15,7 @@
 
 <body><h1>Minimark</h1>
 <p>A minimal Markdown editor for web publishing.</p>
-<p>It saves edits automatically and generates html automatically if <code>cmark-gfm</code> is found.</p>
+<p>It saves edits automatically and generates html if <code>cmark-gfm</code> is found.</p>
 <p><strong>It's currently in a pre-released (alpha) stage and it could be dangerous to use. Use it only on directories that are committed to source control and backup often. It's advanced enough to edit it's own web page, however.</strong></p>
 <h2>Usage</h2>
 <p>From any directory with Markdown files, run:</p>
@@ -26,6 +26,40 @@
 <li>Loads the most recently modified <code>.md</code> file in the current directory (creates <code>untitled.md</code> if none exist).</li>
 <li>Autosaves the file after 500ms of inactivity while typing.</li>
 <li>Serves a minimal UI (HTML/CSS/JS) embedded in the binary—no extra files are written in your working directory.</li>
+</ul>
+<h3>File Naming and Renaming</h3>
+<p>Minimark tries to keep filenames readable and in sync with your document title:</p>
+<ul>
+<li>New files start as <code>untitled.md</code> (or <code>untitled-1.md</code>, <code>untitled-2.md</code>, … if a file already exists).</li>
+<li>On save, if the file is not <code>index.md</code> or <code>readme.md</code>, the first level‑1 heading (H1) determines the filename.
+<ul>
+<li>Supported H1 formats: <code># Title</code> (ATX) and the Setext style:
+<pre><code>Title
+=====
+</code></pre>
+</li>
+<li>The title is slugified (lowercase, spaces/punctuation → dashes) to become the filename, e.g. “My Note” → <code>my-note.md</code>.</li>
+</ul>
+</li>
+<li>If the slugged name differs from the current file, Minimark renames the file on save.
+<ul>
+<li>Existing files are never overwritten; a unique suffix is added (<code>-1</code>, <code>-2</code>, …) if needed.</li>
+<li>The old Markdown file is deleted after a successful rename (and its previously exported HTML is also removed).</li>
+</ul>
+</li>
+<li>Special cases that never auto‑rename: <code>index.md</code> and <code>readme.md</code>.</li>
+</ul>
+<p>HTML export filenames under <code>docs/</code> follow these rules:</p>
+<ul>
+<li>For most files, <code>name.md</code> → <code>docs/name.html</code>.</li>
+<li>Special case: <code>readme.md</code> exports to <code>docs/index.html</code> if there is no <code>index.md</code> in the directory.</li>
+<li>Optional wrapping with <code>_includes/header.html</code> and <code>_includes/footer.html</code> if present.</li>
+</ul>
+<h3>Index and Linking</h3>
+<ul>
+<li>Minimark does not auto‑generate navigation or backlinks; you must maintain links yourself.</li>
+<li>New Markdown files are effectively “secret” until you link to them from somewhere (typically <code>index.md</code>).</li>
+<li>To publish a new page, add a link to it in <code>index.md</code> (or any other page you control). Once linked, the exported HTML will be reachable in your site.</li>
 </ul>
 <h3>HTML Export (cmark-gfm)</h3>
 <p>If <code>cmark-gfm</code> is installed and in your <code>PATH</code>, Minimark will automatically export the current file as an HTML file under <code>./docs</code> after each save.</p>
