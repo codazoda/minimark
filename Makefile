@@ -2,7 +2,7 @@ APP := minimark
 DIST := dist
 PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64
 
-.PHONY: all build build-local install run clean test cover build-all dist-clean
+.PHONY: all build install run clean test cover
 
 all: build install
 
