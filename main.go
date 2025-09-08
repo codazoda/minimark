@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +32,7 @@ func main() {
 	http.Handle("/", rootHandler())
 	http.HandleFunc("/new", handleNew)
 	http.HandleFunc("/open", openLastMarkdown)
+	http.HandleFunc("/files", handleFiles)
 	http.HandleFunc("/index", handleLoadIndex)
 	http.HandleFunc("/save", handleSave)
 	http.HandleFunc("/lock", handleLock)
@@ -526,6 +529,30 @@ func handleNew(w http.ResponseWriter, r *http.Request) {
 // working directory. If none exist, it creates "untitled.md" and opens that.
 // It streams the file contents as text/plain.
 func openLastMarkdown(w http.ResponseWriter, r *http.Request) {
+	// Optional specific file
+	if q := strings.TrimSpace(r.URL.Query().Get("file")); q != "" {
+		name := filepath.Base(q)
+		if name != q { // path traversal attempt
+			http.Error(w, "invalid filename", http.StatusBadRequest)
+			return
+		}
+		b, err := os.ReadFile(name)
+		if err != nil {
+			if os.IsNotExist(err) {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("X-Filename", filepath.Base(name))
+		if _, err := w.Write(b); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
 	file, err := findLastMarkdownFile(".")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -553,6 +580,29 @@ func openLastMarkdown(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// handleFiles lists all top-level .md files in the current directory as JSON.
+func handleFiles(w http.ResponseWriter, r *http.Request) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var files []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.EqualFold(filepath.Ext(name), ".md") {
+			files = append(files, filepath.Base(name))
+		}
+	}
+	// Sort case-insensitive
+	sort.Slice(files, func(i, j int) bool { return strings.ToLower(files[i]) < strings.ToLower(files[j]) })
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(files)
 }
 
 // createFileIfNotExists ensures a file with the given name exists in the

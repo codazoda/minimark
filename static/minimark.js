@@ -13,8 +13,8 @@ let saveTimer = null;
 
 window.addEventListener('DOMContentLoaded', async () => {
     const textarea = document.getElementById('typebox');
-    const filenameEl = document.getElementById('filename');
-    const toolsEl = document.getElementById('tools');
+    const newBtn = document.getElementById('newfile');
+    const filepicker = document.getElementById('filepicker');
     if (!textarea) return;
     try {
         // Load most recently edited markdown file
@@ -27,7 +27,6 @@ window.addEventListener('DOMContentLoaded', async () => {
             textarea.value = text;
             const name = res.headers.get('X-Filename') || 'untitled.md';
             currentFilename = name;
-            if (filenameEl) filenameEl.textContent = name;
             document.title = `Minimark - ${name}`;
         }
     } catch (err) {
@@ -67,6 +66,25 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (_) {}
     }, 500);
 
+    // Populate file dropdown
+    try {
+        const fres = await fetch('/files', { cache: 'no-store' });
+        if (fres.ok) {
+            const files = await fres.json();
+            if (Array.isArray(files) && filepicker) {
+                filepicker.innerHTML = '';
+                for (const f of files) {
+                    const opt = document.createElement('option');
+                    opt.value = f; opt.textContent = f;
+                    filepicker.appendChild(opt);
+                }
+                if (currentFilename) {
+                    filepicker.value = currentFilename;
+                }
+            }
+        }
+    } catch (_) {}
+
     // Debounced autosave on input (500ms idle)
     textarea.addEventListener('input', () => {
         if (saveTimer) clearTimeout(saveTimer);
@@ -84,9 +102,23 @@ window.addEventListener('DOMContentLoaded', async () => {
                 if (res.status === 204) {
                     const newName = res.headers.get('X-Filename');
                     if (newName && newName !== currentFilename) {
+                        const oldName = currentFilename;
                         currentFilename = newName;
-                        if (filenameEl) filenameEl.textContent = newName;
                         document.title = `Minimark - ${newName}`;
+                        if (filepicker) {
+                            let found = false;
+                            for (const o of filepicker.options) {
+                                if (o.value === oldName) {
+                                    o.value = newName; o.textContent = newName; found = true; break;
+                                }
+                            }
+                            if (!found) {
+                                const opt = document.createElement('option');
+                                opt.value = newName; opt.textContent = newName;
+                                filepicker.appendChild(opt);
+                            }
+                            filepicker.value = newName;
+                        }
                     }
                 } else if (res.status === 423) {
                     console.warn('File locked by another editor; disabling input.');
@@ -112,10 +144,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Create new untitled.md and open it
-    if (toolsEl) {
-        toolsEl.style.cursor = 'pointer';
-        toolsEl.title = 'New file';
-        toolsEl.addEventListener('click', async () => {
+    if (newBtn) {
+        newBtn.style.cursor = 'pointer';
+        newBtn.title = 'New file';
+        newBtn.addEventListener('click', async () => {
             // Best-effort unlock current file
             if (currentLock && currentFilename) {
                 try {
@@ -134,8 +166,17 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
                 const newName = (await res.text()).trim();
                 currentFilename = newName || 'untitled.md';
-                if (filenameEl) filenameEl.textContent = currentFilename;
                 document.title = `Minimark - ${currentFilename}`;
+                if (filepicker) {
+                    let exists = false;
+                    for (const o of filepicker.options) { if (o.value === currentFilename) { exists = true; break; } }
+                    if (!exists) {
+                        const opt = document.createElement('option');
+                        opt.value = currentFilename; opt.textContent = currentFilename;
+                        filepicker.appendChild(opt);
+                    }
+                    filepicker.value = currentFilename;
+                }
                 // Acquire lock for new file
                 const lres = await fetch(`/lock?file=${encodeURIComponent(currentFilename)}`, { method: 'POST' });
                 if (lres.status === 201) {
@@ -157,6 +198,37 @@ window.addEventListener('DOMContentLoaded', async () => {
             } catch (err) {
                 console.error('New file error:', err);
             }
+        });
+    }
+
+    // Switch file when picker changes
+    if (filepicker) {
+        filepicker.addEventListener('change', async () => {
+            const next = filepicker.value;
+            if (!next || next === currentFilename) return;
+            // Unlock current
+            if (currentLock && currentFilename) {
+                try {
+                    await fetch(`/unlock?file=${encodeURIComponent(currentFilename)}`, { method: 'POST', headers: { 'X-Lock': currentLock } });
+                } catch (_) {}
+                currentLock = '';
+            }
+            try {
+                const res = await fetch(`/open?file=${encodeURIComponent(next)}`, { cache: 'no-store' });
+                if (!res.ok) { console.warn('Open failed:', res.status); return; }
+                const text = await res.text();
+                textarea.value = text;
+                const name = res.headers.get('X-Filename') || next;
+                currentFilename = name;
+                document.title = `Minimark - ${name}`;
+                // Acquire lock for selected file
+                const lres = await fetch(`/lock?file=${encodeURIComponent(currentFilename)}`, { method: 'POST' });
+                if (lres.status === 201) {
+                    currentLock = lres.headers.get('X-Lock') || '';
+                } else {
+                    setLockedUI();
+                }
+            } catch (err) { console.error('Open error:', err); }
         });
     }
 });

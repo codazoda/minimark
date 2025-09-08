@@ -21,9 +21,16 @@ body {
     margin-top: 10px;
 }
 
-#filename { margin: 0; }
+#tools { 
+    float: none; 
+    display: flex; 
+    align-items: center; 
+    gap: 8px;
+}
 
-#tools { float: none; }
+#newfile { cursor: pointer; user-select: none; }
+
+#filepicker { font-size: 0.9em; }
 
 #typebox {
     width: 100%;
