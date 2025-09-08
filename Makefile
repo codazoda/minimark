@@ -1,6 +1,6 @@
 APP := minimark
 
-.PHONY: all build install run clean
+.PHONY: all build install run clean test cover
 
 all: build
 
@@ -16,3 +16,9 @@ run:
 clean:
 	rm -rf bin
 
+test:
+	go test ./...
+
+cover:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
