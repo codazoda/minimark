@@ -2,6 +2,8 @@
 
 Minimark is a Minimal Markdown editor for web publishing.
 
+It's currently in a pre-released (alpha) stage and it could be dangerous to use. Use it only on directories that are committed to source control and backup often. It's advanced enough to edit it's own web page, however.
+
 
 ## Usage
 
