@@ -14,6 +14,7 @@ let saveTimer = null;
 window.addEventListener('DOMContentLoaded', async () => {
     const textarea = document.getElementById('typebox');
     const filenameEl = document.getElementById('filename');
+    const toolsEl = document.getElementById('tools');
     if (!textarea) return;
     try {
         // Load most recently edited markdown file
@@ -109,4 +110,53 @@ window.addEventListener('DOMContentLoaded', async () => {
             });
         } catch (_) {}
     });
+
+    // Create new untitled.md and open it
+    if (toolsEl) {
+        toolsEl.style.cursor = 'pointer';
+        toolsEl.title = 'New file';
+        toolsEl.addEventListener('click', async () => {
+            // Best-effort unlock current file
+            if (currentLock && currentFilename) {
+                try {
+                    await fetch(`/unlock?file=${encodeURIComponent(currentFilename)}`, {
+                        method: 'POST',
+                        headers: { 'X-Lock': currentLock },
+                    });
+                } catch (_) {}
+                currentLock = '';
+            }
+            try {
+                const res = await fetch('/new', { method: 'POST' });
+                if (!res.ok) {
+                    console.warn('Failed to create new file:', res.status);
+                    return;
+                }
+                const newName = (await res.text()).trim();
+                currentFilename = newName || 'untitled.md';
+                if (filenameEl) filenameEl.textContent = currentFilename;
+                document.title = `Minimark - ${currentFilename}`;
+                // Acquire lock for new file
+                const lres = await fetch(`/lock?file=${encodeURIComponent(currentFilename)}`, { method: 'POST' });
+                if (lres.status === 201) {
+                    currentLock = lres.headers.get('X-Lock') || '';
+                } else {
+                    // If cannot lock, disable editing
+                    textarea.value = '';
+                    textarea.disabled = true;
+                    textarea.placeholder = 'Locked by another browser tab/window.';
+                    textarea.title = 'Locked by another browser tab/window.';
+                    return;
+                }
+                // Start editing the new empty file
+                textarea.disabled = false;
+                textarea.value = '';
+                textarea.placeholder = '';
+                textarea.title = '';
+                textarea.focus();
+            } catch (err) {
+                console.error('New file error:', err);
+            }
+        });
+    }
 });

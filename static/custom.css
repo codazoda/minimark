@@ -10,6 +10,17 @@ body {
     max-width: none;
 }
 
+#header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+#filename { margin: 0; }
+
+#tools { float: none; }
+
 #typebox {
     width: 100%;
     height: calc(100% - 20px);
