@@ -14,7 +14,9 @@
 </head>
 
 <body><h1>Minimark</h1>
-<p>Minimark is a Minimal Markdown editor for web publishing.</p>
+<p>A minimal Markdown editor for web publishing.</p>
+<p>It saves edits automatically and generates html automatically if <code>cmark-gfm</code> is found.</p>
+<p><strong>It's currently in a pre-released (alpha) stage and it could be dangerous to use. Use it only on directories that are committed to source control and backup often. It's advanced enough to edit it's own web page, however.</strong></p>
 <h2>Usage</h2>
 <p>From any directory with Markdown files, run:</p>
 <pre><code class="language-sh">minimark
@@ -26,7 +28,7 @@
 <li>Serves a minimal UI (HTML/CSS/JS) embedded in the binary—no extra files are written in your working directory.</li>
 </ul>
 <h3>HTML Export (cmark-gfm)</h3>
-<p>If <code>cmark-gfm</code> is installed and on your <code>PATH</code>, Minimark will automatically export the current file you are editing to an HTML file under <code>./docs</code> after each save.</p>
+<p>If <code>cmark-gfm</code> is installed and in your <code>PATH</code>, Minimark will automatically export the current file as an HTML file under <code>./docs</code> after each save.</p>
 <p>You can disable automatic export with the <code>-export=false</code> flag:</p>
 <pre><code class="language-sh">minimark -export=false
 </code></pre>
@@ -41,20 +43,29 @@
 <li>If <code>_includes/</code> is missing, wrapping is skipped and no files are copied.</li>
 <li>Special case: exporting <code>readme.md</code> writes <code>docs/index.html</code> if there is no <code>index.md</code> in the directory.</li>
 </ul>
-<p>Optional flag:</p>
-<pre><code class="language-sh">minimark -addr localhost:8080
-</code></pre>
-<h2>Build and Install</h2>
+<h2>Build and Install for Development</h2>
 <p>Requirements: Go 1.21+</p>
 <p>Using Makefile targets:</p>
-<pre><code class="language-sh"># Build locally (outputs bin/minimark)
+<pre><code class="language-sh"># Build for all platforms and install locally
+make
+
+# Run in place for development
+make run
+
+# Build for all platforms
 make build
+
+# Run all tests
+make test
 
 # Install globally (uses go install to GOBIN or GOPATH/bin)
 make install
 
-# Run in place for development
-make run
+# See code coverage
+make cover
+
+# Delete all build files
+make clean
 </code></pre>
 <p>Ensure <code>GOBIN</code> (or <code>GOPATH/bin</code>) is on your <code>PATH</code> to run the installed binary from anywhere.</p>
 <h2>Notes</h2>

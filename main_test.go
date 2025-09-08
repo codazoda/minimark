@@ -530,13 +530,14 @@ func TestHandleNew(t *testing.T) {
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("status = %d", rr.Code)
 	}
-	if _, err := os.Stat("untitled.new"); err != nil {
+	if _, err := os.Stat("untitled.md"); err != nil {
 		t.Fatalf("file missing: %v", err)
 	}
 	// Second call should be 200
 	rr = httptest.NewRecorder()
 	handleNew(rr, req)
-	if rr.Code != http.StatusOK {
+	if rr.Code != http.StatusCreated {
+		// unique name still considered created
 		t.Fatalf("status = %d", rr.Code)
 	}
 }
@@ -978,5 +979,66 @@ func TestHandleSave_UniqueAvailableName(t *testing.T) {
 	}
 	if _, err := os.Stat("my-note-1.md"); err != nil {
 		t.Fatalf("new file missing: %v", err)
+	}
+}
+
+func TestCleanAndExportAll(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
+	chdirTemp(t)
+	// Pre-existing docs content should be removed
+	if err := os.MkdirAll("docs", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("docs", "junk.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Create markdown files, including readme.md special-case
+	if err := os.WriteFile("readme.md", []byte("# Readme"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("note.md", []byte("# Note"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Fake cmark
+	script := filepath.Join(t.TempDir(), "cmark.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho '<p>Body</p>'\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	cmarkPath = script
+	t.Cleanup(func() { cmarkPath = "" })
+	if err := cleanAndExportAll("docs"); err != nil {
+		t.Fatal(err)
+	}
+	// Junk removed
+	if _, err := os.Stat(filepath.Join("docs", "junk.txt")); !os.IsNotExist(err) {
+		t.Fatalf("junk should be removed")
+	}
+	// Exports created
+	if _, err := os.Stat(filepath.Join("docs", "note.html")); err != nil {
+		t.Fatalf("note.html missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join("docs", "index.html")); err != nil {
+		t.Fatalf("index.html missing: %v", err)
+	}
+}
+
+func TestCleanAndExportAll_NoCmarkLeavesDocs(t *testing.T) {
+	chdirTemp(t)
+	// Create docs with a file that should remain if no cmark available
+	if err := os.MkdirAll("docs", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("docs", "keep.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Ensure cmarkPath is empty
+	cmarkPath = ""
+	if err := cleanAndExportAll("docs"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join("docs", "keep.txt")); err != nil {
+		t.Fatalf("docs should be untouched when no cmark: %v", err)
 	}
 }

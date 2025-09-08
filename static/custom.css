@@ -2,12 +2,15 @@
     border-top: none;
 }
 
-html, body {
-    height: calc(100% - 20px);
-}
+html, body { height: 100%; }
 
 body {
+    margin: 0;
     max-width: none;
+    display: flex;
+    flex-direction: column;
+    /* Reduce bottom padding from theme and push some space to top */
+    padding-bottom: 20px; /* slight increase for bottom space */
 }
 
 #header {
@@ -15,6 +18,7 @@ body {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 8px;
+    margin-top: 10px;
 }
 
 #filename { margin: 0; }
@@ -23,7 +27,9 @@ body {
 
 #typebox {
     width: 100%;
-    height: calc(100% - 20px);
+    flex: 1 1 auto;
+    min-height: 0; /* allow flex item to shrink to fit */
+    box-sizing: border-box;
     /* prevent the user from resizing the element */
     resize: none;
     /* keep scrolling behavior if content overflows */

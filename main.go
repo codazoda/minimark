@@ -47,7 +47,11 @@ func main() {
 		log.Printf("HTML export disabled by flag.")
 	}
 
-	// Copy any local includes to docs on startup (best-effort)
+	// Clean docs and export all current markdown files on startup
+	if err := cleanAndExportAll("docs"); err != nil {
+		log.Printf("initial docs export failed: %v", err)
+	}
+	// Copy any local includes to docs on startup (best-effort), after cleaning
 	if err := copyIncludesToDocs("_includes", "docs"); err != nil {
 		log.Printf("copy includes failed: %v", err)
 	}
@@ -189,6 +193,40 @@ func exportMarkdownTo(cmark, src, outPath string) error {
 	composed = append(composed, body...)
 	composed = append(composed, footer...)
 	return os.WriteFile(outPath, composed, 0644)
+}
+
+// cleanAndExportAll removes the docs directory and recreates it, then exports
+// all top-level .md files in the current working directory into docs using
+// cmark-gfm if available.
+func cleanAndExportAll(docsDir string) error {
+	// If exporter not available, leave docs untouched
+	if cmarkPath == "" {
+		return nil
+	}
+	// Remove any existing docs directory (best-effort) and recreate it
+	_ = os.RemoveAll(docsDir)
+	if err := os.MkdirAll(docsDir, 0755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.EqualFold(filepath.Ext(name), ".md") {
+			continue
+		}
+		outName := htmlOutNameFor(filepath.Base(name))
+		outPath := filepath.Join(docsDir, outName)
+		if err := exportMarkdownTo(cmarkPath, name, outPath); err != nil {
+			log.Printf("export error for %s: %v", name, err)
+		}
+	}
+	return nil
 }
 
 // fileExistsLower checks for a file in the current directory by lowercased name.
@@ -461,25 +499,31 @@ func newToken() string {
 	return hex.EncodeToString(b[:])
 }
 
-// handleNew creates a new file named "untitled.new" in the current working
-// directory if it does not already exist. It responds with the file path.
+// handleNew creates a new, unique Markdown file named "untitled.md" (or
+// "untitled-1.md", "untitled-2.md", ...) in the current working directory.
+// It responds with the file name (basename) as text/plain and 201 Created if
+// the file was created, or 200 OK if it already existed (rare, due to unique naming).
 func handleNew(w http.ResponseWriter, r *http.Request) {
-	path, created, err := createFileIfNotExists("untitled.new")
+	name := "untitled.md"
+	if _, err := os.Stat(name); err == nil {
+		name = uniqueAvailableName(name)
+	} else if !os.IsNotExist(err) {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	f, err := os.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	status := http.StatusOK
-	if created {
-		status = http.StatusCreated
-	}
+	_ = f.Close()
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(status)
-	_, _ = w.Write([]byte(path))
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write([]byte(name))
 }
 
 // openLastMarkdown locates the most recently modified .md file in the current
-// working directory. If none exist, it creates "untitled.new" and opens that.
+// working directory. If none exist, it creates "untitled.md" and opens that.
 // It streams the file contents as text/plain.
 func openLastMarkdown(w http.ResponseWriter, r *http.Request) {
 	file, err := findLastMarkdownFile(".")
