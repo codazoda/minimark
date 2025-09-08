@@ -44,6 +44,12 @@ HTML export filenames under `docs/` follow these rules:
 - Special case: `readme.md` exports to `docs/index.html` if there is no `index.md` in the directory.
 - Optional wrapping with `_includes/header.html` and `_includes/footer.html` if present.
 
+### Index and Linking
+
+- Minimark does not auto‑generate navigation or backlinks; you must maintain links yourself.
+- New Markdown files are effectively “secret” until you link to them from somewhere (typically `index.md`).
+- To publish a new page, add a link to it in `index.md` (or any other page you control). Once linked, the exported HTML will be reachable in your site.
+
 
 ### HTML Export (cmark-gfm)
 
