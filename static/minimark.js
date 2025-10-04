@@ -15,7 +15,26 @@ window.addEventListener('DOMContentLoaded', async () => {
     const textarea = document.getElementById('typebox');
     const newBtn = document.getElementById('newfile');
     const filepicker = document.getElementById('filepicker');
+    const menu = document.getElementById('menu');
+    let menuVisible = false;
+    let textareaWasDisabled = false;
     if (!textarea) return;
+    if (menu) {
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            menuVisible = !menuVisible;
+            if (menuVisible) {
+                textareaWasDisabled = textarea.disabled;
+                textarea.disabled = true;
+                textarea.blur();
+            } else if (!textareaWasDisabled) {
+                textarea.disabled = false;
+                textarea.focus();
+            }
+            menu.style.display = menuVisible ? 'block' : 'none';
+            event.preventDefault();
+        });
+    }
     try {
         // Load most recently edited markdown file
         const res = await fetch('/open', { cache: 'no-store' });

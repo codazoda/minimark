@@ -16,13 +16,21 @@
 <body>
 
     <div id="header">
-        <select id="filepicker" aria-label="Open file"></select>
+        <select id="filepicker" aria-label="Open file" title="Add markdown title to rename file"></select>
         <div id="tools">
             <span id="newfile" aria-label="New file" title="New file">+</span>
         </div>
     </div>
 
     <textarea id="typebox" name="text"></textarea>
+
+    <div id="menu">
+        <table>
+            <tr><td><strong>P</strong></td><td>Preview</td></tr>
+            <tr><td><strong>I</strong></td><td>Image</td></tr>
+        </table>
+        <p class="center">ESC to Close Menu</p>
+    </div>
 
     <script src="minimark.js"></script>
 
