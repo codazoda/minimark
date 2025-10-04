@@ -10,6 +10,7 @@ document.addEventListener('keydown', function(e) {
 let currentFilename = 'index.md';
 let currentLock = '';
 let saveTimer = null;
+let currentHtmlFilename = 'index.html';
 
 window.addEventListener('DOMContentLoaded', async () => {
     const textarea = document.getElementById('typebox');
@@ -20,6 +21,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     let textareaWasDisabled = false;
     let menuSelection = null;
     if (!textarea) return;
+
+    const updateHtmlNameFromHeaders = (headers) => {
+        if (!headers || typeof headers.get !== 'function') return;
+        const value = headers.get('X-HTML-Filename');
+        if (value) {
+            currentHtmlFilename = value;
+        }
+    };
     if (menu) {
         const openMenu = () => {
             textareaWasDisabled = textarea.disabled;
@@ -59,6 +68,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             textarea.disabled = false;
             textarea.value = `${before}${snippet}${after}`;
             textarea.setSelectionRange(caret, caret);
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
             textarea.disabled = wasDisabled;
             closeMenu();
         };
@@ -79,6 +89,16 @@ window.addEventListener('DOMContentLoaded', async () => {
             if (event.key && event.key.toLowerCase() === 'i') {
                 event.preventDefault();
                 insertImageSnippet();
+                return;
+            }
+
+            if (event.key && event.key.toLowerCase() === 'p') {
+                event.preventDefault();
+                if (currentHtmlFilename) {
+                    const url = `/docs/${encodeURIComponent(currentHtmlFilename)}`;
+                    window.open(url, '_blank', 'noopener');
+                }
+                closeMenu();
             }
         });
     }
@@ -94,6 +114,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             const name = res.headers.get('X-Filename') || 'untitled.md';
             currentFilename = name;
             document.title = `Minimark - ${name}`;
+            updateHtmlNameFromHeaders(res.headers);
         }
     } catch (err) {
         console.error('Error fetching markdown:', err);
@@ -166,6 +187,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                     body: textarea.value
                 });
                 if (res.status === 204) {
+                    updateHtmlNameFromHeaders(res.headers);
                     const newName = res.headers.get('X-Filename');
                     if (newName && newName !== currentFilename) {
                         const oldName = currentFilename;
@@ -230,6 +252,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                     console.warn('Failed to create new file:', res.status);
                     return;
                 }
+                updateHtmlNameFromHeaders(res.headers);
                 const newName = (await res.text()).trim();
                 currentFilename = newName || 'untitled.md';
                 document.title = `Minimark - ${currentFilename}`;
@@ -282,6 +305,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             try {
                 const res = await fetch(`/open?file=${encodeURIComponent(next)}`, { cache: 'no-store' });
                 if (!res.ok) { console.warn('Open failed:', res.status); return; }
+                updateHtmlNameFromHeaders(res.headers);
                 const text = await res.text();
                 textarea.value = text;
                 const name = res.headers.get('X-Filename') || next;

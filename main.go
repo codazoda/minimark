@@ -30,6 +30,7 @@ func main() {
 	flag.Parse()
 
 	http.Handle("/", rootHandler())
+	http.Handle("/docs/", http.StripPrefix("/docs/", http.FileServer(http.Dir("docs"))))
 	http.HandleFunc("/new", handleNew)
 	http.HandleFunc("/open", openLastMarkdown)
 	http.HandleFunc("/files", handleFiles)
@@ -146,9 +147,9 @@ func handleSave(w http.ResponseWriter, r *http.Request) {
 		oldOutName := htmlOutNameFor(filepath.Base(name))
 		_ = os.Remove(filepath.Join("docs", oldOutName))
 	}
+	outName := htmlOutNameFor(filepath.Base(targetName))
 	// Trigger export after save if available/enabled for this file only
 	if cmarkPath != "" {
-		outName := htmlOutNameFor(filepath.Base(targetName))
 		outPath := filepath.Join("docs", outName)
 		if err := exportMarkdownTo(cmarkPath, targetName, outPath); err != nil {
 			log.Printf("export error for %s: %v", targetName, err)
@@ -156,6 +157,7 @@ func handleSave(w http.ResponseWriter, r *http.Request) {
 	}
 	// Return the filename so the client can update state
 	w.Header().Set("X-Filename", filepath.Base(targetName))
+	w.Header().Set("X-HTML-Filename", outName)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -521,6 +523,7 @@ func handleNew(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = f.Close()
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-HTML-Filename", htmlOutNameFor(filepath.Base(name)))
 	w.WriteHeader(http.StatusCreated)
 	_, _ = w.Write([]byte(name))
 }
@@ -547,6 +550,7 @@ func openLastMarkdown(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("X-Filename", filepath.Base(name))
+		w.Header().Set("X-HTML-Filename", htmlOutNameFor(filepath.Base(name)))
 		if _, err := w.Write(b); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -576,6 +580,7 @@ func openLastMarkdown(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-Filename", filepath.Base(file))
+	w.Header().Set("X-HTML-Filename", htmlOutNameFor(filepath.Base(file)))
 	if _, err := w.Write(b); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
