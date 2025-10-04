@@ -18,21 +18,68 @@ window.addEventListener('DOMContentLoaded', async () => {
     const menu = document.getElementById('menu');
     let menuVisible = false;
     let textareaWasDisabled = false;
+    let menuSelection = null;
     if (!textarea) return;
     if (menu) {
-        document.addEventListener('keydown', (event) => {
-            if (event.key !== 'Escape') return;
-            menuVisible = !menuVisible;
-            if (menuVisible) {
-                textareaWasDisabled = textarea.disabled;
-                textarea.disabled = true;
-                textarea.blur();
-            } else if (!textareaWasDisabled) {
+        const openMenu = () => {
+            textareaWasDisabled = textarea.disabled;
+            const start = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : textarea.value.length;
+            const end = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : start;
+            menuSelection = { start, end };
+            menuVisible = true;
+            menu.style.display = 'block';
+            textarea.disabled = true;
+            textarea.blur();
+        };
+
+        const closeMenu = () => {
+            if (!menuVisible) return;
+            menuVisible = false;
+            menu.style.display = 'none';
+            if (!textareaWasDisabled) {
                 textarea.disabled = false;
                 textarea.focus();
+            } else {
+                textarea.disabled = true;
+                textarea.blur();
             }
-            menu.style.display = menuVisible ? 'block' : 'none';
-            event.preventDefault();
+            menuSelection = null;
+            textareaWasDisabled = false;
+        };
+
+        const insertImageSnippet = () => {
+            const snippet = '![alt text](image-url)';
+            const start = menuSelection ? menuSelection.start : (typeof textarea.selectionStart === 'number' ? textarea.selectionStart : textarea.value.length);
+            const end = menuSelection ? menuSelection.end : (typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : start);
+            const value = textarea.value;
+            const before = value.slice(0, start);
+            const after = value.slice(end);
+            const caret = start + snippet.length;
+            const wasDisabled = textarea.disabled;
+            textarea.disabled = false;
+            textarea.value = `${before}${snippet}${after}`;
+            textarea.setSelectionRange(caret, caret);
+            textarea.disabled = wasDisabled;
+            closeMenu();
+        };
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                if (menuVisible) {
+                    closeMenu();
+                } else {
+                    openMenu();
+                }
+                return;
+            }
+
+            if (!menuVisible) return;
+
+            if (event.key && event.key.toLowerCase() === 'i') {
+                event.preventDefault();
+                insertImageSnippet();
+            }
         });
     }
     try {
