@@ -55,6 +55,7 @@ body {
     box-sizing: border-box;
     width: fit-content;
     max-width: calc(100% - 40px);
+     background-color: var(--lesslight);
 }
 
 #menu ul {
